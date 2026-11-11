@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Telegram POS Mini App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Hide scrollbar for category tabs */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans antialiased min-h-screen">
+
+  <!-- Responsive Outer Wrapper: Max-width expands on tablet/desktop -->
+  <div id="app" class="w-full max-w-md md:max-w-4xl lg:max-w-6xl mx-auto min-h-screen flex flex-col bg-white shadow-lg border-x border-gray-200">
+
+    <!-- Header -->
+    <header class="bg-blue-600 text-white p-4 flex justify-between items-center sticky top-0 z-10 shadow-md">
+      <div>
+        <h1 class="font-bold text-lg md:text-xl">Drive Mini POS</h1>
+        <p id="user-info" class="text-xs text-blue-200">Checking auth...</p>
+      </div>
+      <button onclick="logout()" id="logout-btn" class="hidden text-xs md:text-sm bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded font-semibold transition-colors">Logout</button>
+    </header>
+
+    <!-- Main Dynamic Content Container -->
+    <main id="content" class="flex-1 p-4 md:p-6 overflow-y-auto">
+      <div class="flex justify-center items-center h-64">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    </main>
+
+    <!-- Navigation Bar -->
+    <nav id="nav-bar" class="hidden bg-gray-50 border-t flex justify-around p-2.5 text-center text-xs md:text-sm">
+      <button onclick="showTerminal()" class="flex-1 py-1 text-blue-600 font-bold hover:bg-blue-50 rounded">🛒 Terminal</button>
+      <button onclick="showInventory()" class="flex-1 py-1 text-gray-600 font-semibold hover:bg-gray-100 rounded">📦 Items</button>
+      <button id="nav-reports" onclick="showReports()" class="hidden flex-1 py-1 text-gray-600 font-semibold hover:bg-gray-100 rounded">📊 Reports</button>
+    </nav>
+  </div>
+
+  <!-- PAYMENT METHOD MODAL -->
+  <div id="payment-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-xs md:max-w-sm p-5 relative">
+      <h3 class="text-lg font-bold text-center text-gray-800 mb-1">Payment Method</h3>
+      <p id="modal-total-display" class="text-center font-extrabold text-2xl text-blue-600 mb-4">$0.00</p>
+      
+      <!-- Selection Buttons -->
+      <div id="payment-options" class="space-y-3">
+        <button type="button" onclick="selectCashPayment()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition-colors">
+          <span>💵</span> <span>Cash Payment</span>
+        </button>
+        <button type="button" onclick="processPayment('QR')" class="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition-colors">
+          <span>📱</span> <span>QR Scan Payment</span>
+        </button>
+        <button type="button" onclick="closePaymentModal()" class="w-full py-2 bg-gray-200 text-gray-700 rounded-lg font-bold text-sm">
+          Cancel
+        </button>
+      </div>
+
+      <!-- Cash Change Sub-Panel -->
+      <div id="cash-panel" class="hidden space-y-3">
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1">Cash Received ($):</label>
+          <input type="number" step="0.01" id="cash-received-input" oninput="calculateChange()" placeholder="0.00" class="w-full border-2 border-gray-300 focus:border-emerald-500 rounded-lg p-2.5 text-lg font-bold outline-none">
+        </div>
+        
+        <div class="bg-gray-50 p-3 rounded-lg border flex justify-between items-center">
+          <span class="text-xs font-bold text-gray-500">Change Due:</span>
+          <span id="change-due-display" class="font-extrabold text-xl text-emerald-600">$0.00</span>
+        </div>
+
+        <button type="button" onclick="processPayment('Cash')" id="confirm-cash-btn" class="w-full py-3 bg-emerald-600 text-white rounded-lg font-bold disabled:opacity-50 shadow-sm transition-colors">
+          Confirm Cash Sale
+        </button>
+        <button type="button" onclick="resetPaymentModal()" class="w-full py-1.5 text-gray-500 font-bold text-xs">
+          ← Back to Options
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD NEW PRODUCT MODAL -->
+  <div id="add-item-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
+      <h3 class="text-base font-bold text-gray-800 mb-3 text-center">Add New Product</h3>
+      <form onsubmit="submitNewProduct(event)" class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Barcode</label>
+          <input type="text" id="new-barcode" required placeholder="Scan or type barcode" class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Item Name</label>
+          <input type="text" id="new-name" required placeholder="e.g. Coca Cola" class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Category</label>
+            <input type="text" id="new-category" required placeholder="e.g. Drinks" class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Price ($)</label>
+            <input type="number" step="0.01" id="new-price" required placeholder="0.00" class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Initial Stock</label>
+            <input type="number" id="new-stock" required placeholder="10" class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Min Stock Threshold</label>
+            <input type="number" id="new-minstock" required placeholder="2" class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+        </div>
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="closeAddItemModal()" class="w-1/2 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold text-xs">Cancel</button>
+          <button type="submit" class="w-1/2 py-2 bg-emerald-600 text-white rounded-lg font-bold text-xs shadow-sm">Save Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT PRODUCT MODAL -->
+  <div id="edit-item-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
+      <h3 class="text-base font-bold text-gray-800 mb-3 text-center">Edit Product</h3>
+      <form onsubmit="submitEditProduct(event)" class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Barcode (Read Only)</label>
+          <input type="text" id="edit-barcode" readonly class="w-full border rounded-lg p-2 text-xs font-semibold bg-gray-100 text-gray-600 outline-none">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Item Name</label>
+          <input type="text" id="edit-name" required class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Category</label>
+            <input type="text" id="edit-category" required class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Price ($)</label>
+            <input type="number" step="0.01" id="edit-price" required class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Current Stock</label>
+            <input type="number" id="edit-stock" required class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-500 mb-0.5">Min Stock Threshold</label>
+            <input type="number" id="edit-minstock" required class="w-full border rounded-lg p-2 text-xs font-semibold outline-none focus:border-blue-500">
+          </div>
+        </div>
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="closeEditItemModal()" class="w-1/2 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold text-xs">Cancel</button>
+          <button type="submit" class="w-1/2 py-2 bg-blue-600 text-white rounded-lg font-bold text-xs shadow-sm">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script>
+  // ⚠️ REPLACE THIS WITH YOUR GOOGLE APPS SCRIPT WEB APP DEPLOYMENT URL
+  const API_URL = "https://script.google.com/macros/s/AKfycbwdwsXsFFcqNCStuzyNMFaGb30go3hGmACkkBM8ufoFaeGxaQShV3NgQFK6rjN7iu2TUQ/exec";
+
+  const tg = window.Telegram?.WebApp;
+  if(tg) { tg.ready(); tg.expand(); }
+
+  const telegramUserId = tg?.initDataUnsafe?.user?.id 
+                      || tg?.initDataUnsafe?.user?.id?.toString()
+                      || "393274647"; 
+
+  let profiles = [];
+  let currentUser = null;
+  let products = [];
+  let cart = [];
+  let selectedCategory = 'All';
+  let currentSaleTotal = 0;
+
+  // Generic REST Fetch Handler to replace google.script.run
+  async function callApi(action, extraData = {}) {
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: action, ...extraData })
+      });
+      return await response.json();
+    } catch (err) {
+      console.error("API Error:", err);
+      return { success: false, error: err.toString() };
+    }
+  }
+
+  window.addEventListener('load', init);
+
+  async function init() {
+    const res = await callApi("getProfiles", { telegramUserId: telegramUserId });
+    if (res.success) {
+      onProfilesLoaded(res);
+    } else {
+      onError(res.message || res.error);
+    }
+  }
+
+  function onError(err) {
+    document.getElementById('content').innerHTML = `
+      <div class="bg-red-50 text-red-600 p-4 rounded-lg text-center mt-6">
+        <p class="font-bold">Error Accessing Database</p>
+        <p class="text-xs mt-1">${err.message || err}</p>
+      </div>`;
+  }
+
+  function onProfilesLoaded(res) {
+    if(!res.success) {
+      document.getElementById('content').innerHTML = `
+        <div class="text-center mt-12 p-6">
+          <div class="text-4xl mb-2">🔒</div>
+          <h2 class="text-xl font-bold text-gray-800">Access Denied</h2>
+          <p class="text-sm text-gray-500 mt-2">${res.message}</p>
+        </div>`;
+      return;
+    }
+    profiles = res.profiles;
+    renderCashierSelect();
+  }
+
+  function renderCashierSelect() {
+    let html = `
+      <div class="max-w-md mx-auto">
+        <h2 class="text-lg md:text-xl font-bold mb-4 text-center">Select Cashier Profile</h2>
+        <div class="space-y-2.5">`;
+    
+    profiles.forEach((p, idx) => {
+      html += `
+        <button onclick="selectProfile(${idx})" class="w-full p-4 border rounded-xl text-left hover:bg-gray-50 flex justify-between items-center shadow-sm transition-all">
+          <div>
+            <div class="font-bold md:text-base">${p.name}</div>
+            <div class="text-xs text-gray-500 capitalize">Role: ${p.role}</div>
+          </div>
+          <span class="text-gray-400 font-bold">➔</span>
+        </button>`;
+    });
+    html += `</div></div>`;
+    document.getElementById('content').innerHTML = html;
+  }
+
+  function selectProfile(idx) {
+    const profile = profiles[idx];
+    const pin = prompt(`Enter PIN for ${profile.name}:`);
+    if(pin === profile.pin) {
+      currentUser = profile;
+      document.getElementById('user-info').innerText = `${currentUser.name} (${currentUser.role})`;
+      document.getElementById('logout-btn').classList.remove('hidden');
+      document.getElementById('nav-bar').classList.remove('hidden');
+
+      if(currentUser.role === 'owner' || currentUser.role === 'manager') {
+        document.getElementById('nav-reports').classList.remove('hidden');
+      }
+      loadProducts();
+    } else if(pin !== null) {
+      alert('Incorrect PIN');
+    }
+  }
+
+  function logout() {
+    currentUser = null;
+    cart = [];
+    document.getElementById('logout-btn').classList.add('hidden');
+    document.getElementById('nav-bar').classList.add('hidden');
+    document.getElementById('user-info').innerText = 'Select Account';
+    renderCashierSelect();
+  }
+
+  async function loadProducts() {
+    document.getElementById('content').innerHTML = `
+      <div class="flex justify-center items-center h-48">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>`;
+
+    const res = await callApi("getProducts");
+    if(res.success) {
+      products = res.products;
+      showTerminal();
+    } else {
+      onError(res.error);
+    }
+  }
+
+  function showTerminal() {
+    let cartTotal = cart.reduce((sum, i) => sum + (Number(i.price) * Number(i.qty)), 0);
+    const categories = ['All', ...new Set(products.map(p => p.category || 'General'))];
+    const filteredProducts = selectedCategory === 'All' 
+      ? products 
+      : products.filter(p => (p.category || 'General') === selectedCategory);
+
+    let html = `
+      <!-- BARCODE / ITEM NAME INPUT FIELD -->
+      <div class="mb-4">
+        <label class="block text-xs font-bold text-gray-500 mb-1">SCAN BARCODE OR SEARCH ITEM NAME</label>
+        <div class="flex gap-2">
+          <input 
+            type="text" 
+            id="barcode-input" 
+            placeholder="Scan barcode or type item name..." 
+            onkeydown="handleBarcodeKeydown(event)"
+            class="w-full border-2 border-green-500 focus:ring-2 focus:ring-green-400 rounded-lg p-2.5 text-sm font-semibold outline-none bg-green-50/30 shadow-sm"
+            autofocus
+          >
+          <button type="button" onclick="manualAddBarcode()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold text-xs whitespace-nowrap shadow-sm transition-colors">
+            Add
+          </button>
+        </div>
+      </div>
+
+      <!-- RESPONSIVE WRAPPER (Flex-col on phone, 2-Columns on Tablet/Desktop) -->
+      <div class="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
+        
+        <!-- LEFT COLUMN: CART TERMINAL -->
+        <div class="w-full md:w-5/12 border rounded-xl p-4 bg-gray-50 shadow-sm sticky top-16">
+          <h3 class="font-bold text-xs uppercase text-gray-400 mb-2">Cart Terminal (${cart.length})</h3>
+          <div class="space-y-2 max-h-48 md:max-h-80 overflow-y-auto">`;
+
+    if(cart.length === 0) {
+      html += `<p class="text-xs text-gray-400 text-center py-6">Cart is empty. Scan barcode or tap item.</p>`;
+    } else {
+      cart.forEach((item, idx) => {
+        html += `
+          <div class="flex justify-between items-center text-sm bg-white p-2.5 rounded-lg border shadow-xs">
+            <div>
+              <div class="font-bold text-xs md:text-sm text-gray-800">${item.name}</div>
+              <div class="text-xs text-gray-500">$${item.price.toFixed(2)} x ${item.qty}</div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="updateQty(${idx}, -1)" class="w-7 h-7 border rounded-md font-bold bg-gray-100 hover:bg-gray-200 active:bg-gray-300">-</button>
+              <span class="font-bold text-xs px-1">${item.qty}</span>
+              <button type="button" onclick="updateQty(${idx}, 1)" class="w-7 h-7 border rounded-md font-bold bg-gray-100 hover:bg-gray-200 active:bg-gray-300">+</button>
+            </div>
+          </div>`;
+      });
+    }
+
+    html += `
+          </div>
+          <div class="border-t border-gray-200 mt-4 pt-3 flex justify-between font-extrabold text-base md:text-lg">
+            <span>Total:</span>
+            <span class="text-blue-600">$${cartTotal.toFixed(2)}</span>
+          </div>
+          <button type="button" onclick="openPaymentModal()" ${cart.length === 0 ? 'disabled' : ''} class="w-full mt-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3 rounded-lg font-bold disabled:opacity-50 shadow-sm transition-colors">
+            Complete Payment
+          </button>
+        </div>
+
+        <!-- RIGHT COLUMN: CATALOG & CATEGORY FILTERS -->
+        <div class="w-full md:w-7/12">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold text-sm text-gray-700">Product Catalog</h3>
+            <button type="button" onclick="openAddItemModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-xs transition-colors">
+              + Add Item
+            </button>
+          </div>
+
+          <!-- Category Filter Pills -->
+          <div class="flex gap-2 overflow-x-auto pb-2.5 mb-3 no-scrollbar">`;
+
+    categories.forEach(cat => {
+      const activeClass = cat === selectedCategory 
+        ? 'bg-blue-600 text-white font-bold shadow-xs' 
+        : 'bg-gray-200 text-gray-700 hover:bg-gray-300';
+      html += `
+        <button type="button" onclick="filterCategory('${cat}')" class="px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap transition-all ${activeClass}">
+          ${cat}
+        </button>`;
+    });
+
+    html += `</div>
+
+          <!-- Responsive Product Grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">`;
+
+    filteredProducts.forEach(p => {
+      html += `
+        <button type="button" onclick="addToCart('${p.barcode}')" class="p-3 border rounded-xl text-left hover:border-blue-500 hover:shadow-md bg-white transition-all flex flex-col justify-between">
+          <div>
+            <div class="font-bold text-xs md:text-sm text-gray-800 truncate">${p.name}</div>
+            <div class="text-[10px] text-gray-400 font-medium">${p.category || 'General'}</div>
+          </div>
+          <div class="mt-2">
+            <div class="text-xs md:text-sm text-blue-600 font-extrabold">$${p.price.toFixed(2)}</div>
+            <div class="text-[10px] ${p.stock <= p.minStock ? 'text-red-500 font-bold' : 'text-gray-400'}">Stock: ${p.stock}</div>
+          </div>
+        </button>`;
+    });
+
+    html += `
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('content').innerHTML = html;
+
+    setTimeout(() => {
+      const input = document.getElementById('barcode-input');
+      if(input) input.focus();
+    }, 100);
+  }
+
+  function filterCategory(cat) {
+    selectedCategory = cat;
+    showTerminal();
+  }
+
+  function addToCart(query) {
+    if (!query) return;
+    const cleanQuery = String(query).trim().toLowerCase();
+
+    let prod = products.find(p => String(p.barcode).trim().toLowerCase() === cleanQuery);
+    if (!prod) {
+      prod = products.find(p => p.name.toLowerCase().includes(cleanQuery));
+    }
+
+    if (!prod) return alert(`Item not found for: "${query}"`);
+    if (prod.stock <= 0) return alert(`"${prod.name}" is out of stock!`);
+
+    const existing = cart.find(c => String(c.barcode) === String(prod.barcode));
+    if (existing) {
+      if (existing.qty + 1 > prod.stock) {
+        return alert(`Cannot add more "${prod.name}". Stock limit reached (${prod.stock}).`);
+      }
+      existing.qty++;
+    } else {
+      cart.push({ barcode: prod.barcode, name: prod.name, price: prod.price, qty: 1 });
+    }
+
+    showTerminal();
+  }
+
+  function handleBarcodeKeydown(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const inputVal = event.target.value.trim();
+      if (inputVal) {
+        addToCart(inputVal);
+        event.target.value = '';
+      }
+    }
+  }
+
+  function manualAddBarcode() {
+    const input = document.getElementById('barcode-input');
+    if (input && input.value.trim()) {
+      addToCart(input.value.trim());
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  function updateQty(idx, change) {
+    cart[idx].qty += change;
+    if(cart[idx].qty <= 0) cart.splice(idx, 1);
+    showTerminal();
+  }
+
+  /* --- PAYMENT MODAL FUNCTIONS --- */
+
+  function openPaymentModal() {
+    currentSaleTotal = cart.reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
+    document.getElementById('modal-total-display').innerText = `$${currentSaleTotal.toFixed(2)}`;
+    resetPaymentModal();
+    document.getElementById('payment-modal').classList.remove('hidden');
+  }
+
+  function closePaymentModal() {
+    document.getElementById('payment-modal').classList.add('hidden');
+  }
+
+  function resetPaymentModal() {
+    document.getElementById('payment-options').classList.remove('hidden');
+    document.getElementById('cash-panel').classList.add('hidden');
+    document.getElementById('cash-received-input').value = '';
+    document.getElementById('change-due-display').innerText = '$0.00';
+  }
+
+  function selectCashPayment() {
+    document.getElementById('payment-options').classList.add('hidden');
+    document.getElementById('cash-panel').classList.remove('hidden');
+    document.getElementById('cash-received-input').focus();
+  }
+
+  function calculateChange() {
+    const received = Number(document.getElementById('cash-received-input').value) || 0;
+    const change = received - currentSaleTotal;
+    const changeDisplay = document.getElementById('change-due-display');
+    const confirmBtn = document.getElementById('confirm-cash-btn');
+
+    if (change >= 0) {
+      changeDisplay.innerText = `$${change.toFixed(2)}`;
+      changeDisplay.className = "font-extrabold text-xl text-emerald-600";
+      confirmBtn.disabled = false;
+    } else {
+      changeDisplay.innerText = `-$${Math.abs(change).toFixed(2)}`;
+      changeDisplay.className = "font-extrabold text-xl text-red-500";
+      confirmBtn.disabled = true;
+    }
+  }
+
+  async function processPayment(payType) {
+    closePaymentModal();
+
+    const payload = {
+      telegramUserId: telegramUserId,
+      cashierName: currentUser.name,
+      paymentType: payType,
+      totalAmount: currentSaleTotal,
+      cart: cart
+    };
+
+    document.getElementById('content').innerHTML = `
+      <div class="flex justify-center items-center h-48">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>`;
+
+    const res = await callApi("processSale", { data: payload });
+    if(res.success) {
+      alert(`Sale Completed (${payType})! Receipt #${res.saleId}`);
+      cart = [];
+      loadProducts();
+    } else {
+      onError(res.error);
+    }
+  }
+
+  function openAddItemModal() {
+    document.getElementById('add-item-modal').classList.remove('hidden');
+    document.getElementById('new-barcode').focus();
+  }
+
+  function closeAddItemModal() {
+    document.getElementById('add-item-modal').classList.add('hidden');
+  }
+
+  async function submitNewProduct(event) {
+    event.preventDefault();
+    
+    const payload = {
+      barcode: document.getElementById('new-barcode').value.trim(),
+      name: document.getElementById('new-name').value.trim(),
+      category: document.getElementById('new-category').value.trim(),
+      price: Number(document.getElementById('new-price').value),
+      stock: Number(document.getElementById('new-stock').value),
+      minStock: Number(document.getElementById('new-minstock').value)
+    };
+
+    closeAddItemModal();
+    
+    document.getElementById('content').innerHTML = `
+      <div class="flex justify-center items-center h-48">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>`;
+
+    const res = await callApi("addProduct", { product: payload });
+    if(res.success) {
+      alert(`Product "${payload.name}" added successfully!`);
+      loadProducts();
+    } else {
+      alert(res.message || res.error);
+      showTerminal();
+    }
+  }
+
+  function showInventory() {
+    let html = `
+      <div class="w-full">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h2 class="font-bold text-lg md:text-xl text-gray-800">Inventory Management</h2>
+            <p class="text-xs text-gray-500">Total Products: ${products.length}</p>
+          </div>
+          <button type="button" onclick="openAddItemModal()" class="text-xs md:text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg font-bold shadow-xs transition-colors">
+            + Add New Item
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">`;
+
+    products.forEach((p, idx) => {
+      html += `
+        <div class="p-3.5 border rounded-xl bg-white shadow-xs flex flex-col justify-between hover:border-blue-400 hover:shadow-md transition-all">
+          <div>
+            <div class="font-bold text-sm md:text-base text-gray-800 truncate">${p.name}</div>
+            <div class="text-xs text-gray-500 mt-0.5">Barcode: <span class="font-mono text-gray-700">${p.barcode}</span></div>
+            <div class="text-xs text-gray-500">Cat: <span class="font-medium text-gray-700">${p.category || 'General'}</span></div>
+            <div class="text-sm text-blue-600 font-extrabold mt-1.5">$${p.price.toFixed(2)}</div>
+          </div>
+
+          <div class="flex justify-between items-center border-t border-gray-100 mt-3 pt-2.5">
+            <div class="text-left">
+              <div class="text-xs ${p.stock <= p.minStock ? 'text-red-500 font-bold' : 'text-gray-600 font-semibold'}">Qty: ${p.stock}</div>
+              <div class="text-[10px] text-gray-400">Min Threshold: ${p.minStock}</div>
+            </div>
+            <div class="flex gap-1.5">
+              <button type="button" onclick="openEditItemModal(${idx})" class="px-2.5 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-bold text-xs transition-colors">
+                ✏️ Edit
+              </button>
+              <button type="button" onclick="confirmDeleteProduct('${p.barcode}', '${p.name}')" class="px-2.5 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-md font-bold text-xs transition-colors">
+                🗑️ Delete
+              </button>
+            </div>
+          </div>
+        </div>`;
+    });
+
+    html += `</div></div>`;
+    document.getElementById('content').innerHTML = html;
+  }
+
+  function openEditItemModal(idx) {
+    const prod = products[idx];
+    document.getElementById('edit-barcode').value = prod.barcode;
+    document.getElementById('edit-name').value = prod.name;
+    document.getElementById('edit-category').value = prod.category || 'General';
+    document.getElementById('edit-price').value = prod.price;
+    document.getElementById('edit-stock').value = prod.stock;
+    document.getElementById('edit-minstock').value = prod.minStock;
+
+    document.getElementById('edit-item-modal').classList.remove('hidden');
+  }
+
+  function closeEditItemModal() {
+    document.getElementById('edit-item-modal').classList.add('hidden');
+  }
+
+  async function submitEditProduct(event) {
+    event.preventDefault();
+
+    const payload = {
+      barcode: document.getElementById('edit-barcode').value.trim(),
+      name: document.getElementById('edit-name').value.trim(),
+      category: document.getElementById('edit-category').value.trim(),
+      price: Number(document.getElementById('edit-price').value),
+      stock: Number(document.getElementById('edit-stock').value),
+      minStock: Number(document.getElementById('edit-minstock').value)
+    };
+
+    closeEditItemModal();
+
+    document.getElementById('content').innerHTML = `
+      <div class="flex justify-center items-center h-48">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>`;
+
+    const res = await callApi("updateProduct", { product: payload });
+    if (res.success) {
+      alert(`Product "${payload.name}" updated successfully!`);
+      loadProducts();
+    } else {
+      alert(res.message || res.error);
+      showInventory();
+    }
+  }
+
+  async function confirmDeleteProduct(barcode, name) {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+    document.getElementById('content').innerHTML = `
+      <div class="flex justify-center items-center h-48">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>`;
+
+    const res = await callApi("deleteProduct", { barcode: barcode });
+    if (res.success) {
+      alert(`Product "${name}" deleted.`);
+      loadProducts();
+    } else {
+      alert(res.message || res.error);
+      loadProducts();
+    }
+  }
+
+  async function showReports() {
+    document.getElementById('content').innerHTML = `
+      <div class="flex justify-center items-center h-48">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>`;
+
+    const res = await callApi("getReports");
+    if(res.success) {
+      let html = `
+        <div class="max-w-xl mx-auto">
+          <h2 class="font-bold mb-3 text-lg">Sales Summary</h2>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+              <div class="text-xs text-blue-600 font-semibold">Total Sales</div>
+              <div class="text-2xl font-extrabold text-blue-800">${res.totalSales}</div>
+            </div>
+            <div class="p-4 bg-green-50 border border-green-200 rounded-xl">
+              <div class="text-xs text-green-600 font-semibold">Total Revenue</div>
+              <div class="text-2xl font-extrabold text-green-800">$${res.totalRevenue.toFixed(2)}</div>
+            </div>
+          </div>
+          <h3 class="font-bold text-sm mb-2 text-gray-700">Payment Breakdown</h3>
+          <div class="space-y-2">
+            <div class="p-3 bg-white border rounded-lg flex justify-between text-sm"><span>Cash</span><span class="font-bold">$${res.paymentBreakdown.Cash.toFixed(2)}</span></div>
+            <div class="p-3 bg-white border rounded-lg flex justify-between text-sm"><span>QR</span><span class="font-bold">$${res.paymentBreakdown.QR.toFixed(2)}</span></div>
+          </div>
+        </div>`;
+      document.getElementById('content').innerHTML = html;
+    }
+  }
+</script>
+</body>
+</html>
