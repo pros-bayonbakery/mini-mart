@@ -7,6 +7,7 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     /* Hide scrollbar for category tabs */
     .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -480,42 +481,24 @@
     showTerminal();
   }
 
-  /* --- PHONE CAMERA SCANNER FUNCTIONS --- */
+ /* --- 1D BARCODE & QR CAMERA SCANNER --- */
 
   function startCameraScan() {
-    const tgApp = window.Telegram?.WebApp;
-
-    if (tgApp && typeof tgApp.showScanQrPopup === 'function') {
-      try {
-        tgApp.showScanQrPopup({ text: "Align barcode inside camera frame" }, function(scannedText) {
-          if (scannedText) {
-            addToCart(scannedText.trim());
-            if (typeof tgApp.closeScanQrPopup === 'function') {
-              tgApp.closeScanQrPopup();
-            }
-            return true;
-          }
-        });
-        return;
-      } catch (e) {
-        console.log("Telegram native scanner failed, using fallback.");
-      }
-    }
-
+    // Directly launch our custom web camera scanner configured for 1D product barcodes
     runHtml5Camera();
   }
 
   function runHtml5Camera() {
     document.getElementById('camera-modal-container').classList.remove('hidden');
-    
+
     if (!html5QrScannerInstance) {
       html5QrScannerInstance = new Html5Qrcode("web-cam-reader");
     }
 
-    // Extended Configuration for 1D Product Barcodes
+    // Extended settings specifically tuned for 1D product barcodes
     const config = { 
-      fps: 15, // Increase frames per second for faster scanning
-      qrbox: { width: 280, height: 160 }, // Wider box suited for rectangular barcodes
+      fps: 15,
+      qrbox: { width: 280, height: 160 }, // Horizontal box for long barcodes
       aspectRatio: 1.0,
       formatsToSupport: [
         Html5QrcodeSupportedFormats.EAN_13,
@@ -530,8 +513,7 @@
 
     html5QrScannerInstance.start(
       { 
-        facingMode: "environment",
-        // Force high resolution so small barcode lines are crisp
+        facingMode: "environment", // Use rear camera
         width: { min: 640, ideal: 1280, max: 1920 },
         height: { min: 480, ideal: 720, max: 1080 }
       },
@@ -541,12 +523,21 @@
         stopCameraScan();
       },
       (errorMessage) => {
-        // Scanning frame errors while active can be ignored
+        // Ignore frame decoding errors while active
       }
     ).catch(err => {
-      alert("Unable to access rear camera. Please verify device permissions.");
+      alert("Unable to access rear camera. Please check device permissions.");
       stopCameraScan();
     });
+  }
+
+  function stopCameraScan() {
+    document.getElementById('camera-modal-container').classList.add('hidden');
+    if (html5QrScannerInstance) {
+      html5QrScannerInstance.stop().then(() => {
+        html5QrScannerInstance.clear();
+      }).catch(err => console.log(err));
+    }
   }
 
   function stopCameraScan() {
