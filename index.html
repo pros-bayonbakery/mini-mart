@@ -6,23 +6,21 @@
   <title>POS Mini App</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Replace html5-qrcode with Quagga2 for 1D Barcodes -->
-<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
   <style>
     /* Hide scrollbar for category tabs */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     #web-cam-reader video {
-  width: 100% !important;
-  height: auto !important;
-  border-radius: 0.5rem;
-  object-fit: cover;
-}
-#web-cam-reader canvas.drawingBuffer {
-  display: none; /* Hides internal canvas overlays */
-}
+      width: 100% !important;
+      height: auto !important;
+      border-radius: 0.5rem;
+      object-fit: cover;
+    }
+    #web-cam-reader canvas.drawingBuffer {
+      display: none; /* Hides internal canvas overlays */
+    }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans antialiased min-h-screen">
@@ -187,7 +185,6 @@
   </div>
 
 <script>
-  // ⚠️ REPLACE WITH YOUR GOOGLE APPS SCRIPT WEB APP DEPLOYMENT URL
   const API_URL = "https://script.google.com/macros/s/AKfycbwdwsXsFFcqNCStuzyNMFaGb30go3hGmACkkBM8ufoFaeGxaQShV3NgQFK6rjN7iu2TUQ/exec";
 
   const tg = window.Telegram?.WebApp;
@@ -203,7 +200,8 @@
   let cart = [];
   let selectedCategory = 'All';
   let currentSaleTotal = 0;
-  let html5QrScannerInstance = null;
+  let selectedProfileForLogin = null;
+  let enteredPin = "";
 
   async function callApi(action, extraData = {}) {
     try {
@@ -252,9 +250,6 @@
     renderCashierSelect();
   }
 
-  let selectedProfileForLogin = null;
-  let enteredPin = "";
-
   function renderCashierSelect() {
     selectedProfileForLogin = null;
     enteredPin = "";
@@ -349,147 +344,7 @@
     document.getElementById('pin-error').innerText = "";
     updatePinDots();
 
-    // Auto-submit as soon as the PIN matches the exact length & value!
-    if (enteredPin === String(selectedProfileForLogin.pin)) {
-      setTimeout(() => submitPinLogin(), 150);
-    }
-  }
-
-  function clearPinKey() {
-    enteredPin = "";
-    document.getElementById('pin-error').innerText = "";
-    updatePinDots();
-  }
-
-  function updatePinDots() {
-    const container = document.getElementById('pin-dots');
-    if (enteredPin.length === 0) {
-      container.innerHTML = `<span class="text-gray-400 text-xs font-semibold tracking-widest">ENTER PIN</span>`;
-      return;
-    }
-    let dots = "";
-    for (let i = 0; i < enteredPin.length; i++) {
-      dots += `<div class="w-3.5 h-3.5 rounded-full bg-blue-600 transition-all"></div>`;
-    }
-    container.innerHTML = dots;
-  }
-
-  function submitPinLogin() {
-    if (enteredPin === String(selectedProfileForLogin.pin)) {
-      currentUser = selectedProfileForLogin;
-      document.getElementById('user-info').innerText = `${currentUser.name} (${currentUser.role})`;
-      document.getElementById('logout-btn').classList.remove('hidden');
-      document.getElementById('nav-bar').classList.remove('hidden');
-
-      if (currentUser.role === 'owner' || currentUser.role === 'manager') {
-        document.getElementById('nav-reports').classList.remove('hidden');
-      } else {
-        document.getElementById('nav-reports').classList.add('hidden');
-      }
-      loadProducts();
-    } else {
-      document.getElementById('pin-error').innerText = "Incorrect PIN. Try again.";
-      enteredPin = "";
-      updatePinDots();
-    }
-  }let selectedProfileForLogin = null;
-  let enteredPin = "";
-
-  function renderCashierSelect() {
-    selectedProfileForLogin = null;
-    enteredPin = "";
-
-    let html = `
-      <div class="max-w-sm mx-auto mt-4">
-        <div class="text-center mb-6">
-          <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 shadow-xs">
-            🏪
-          </div>
-          <h2 class="text-xl font-extrabold text-gray-800">Welcome Back</h2>
-          <p class="text-xs text-gray-500 mt-1">Select your profile to start selling</p>
-        </div>
-
-        <div class="space-y-2.5">`;
-    
-    profiles.forEach((p, idx) => {
-      const roleBadgeColor = p.role === 'owner' 
-        ? 'bg-purple-100 text-purple-700' 
-        : (p.role === 'manager' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600');
-
-      html += `
-        <button onclick="openPinPad(${idx})" class="w-full p-4 border border-gray-200 rounded-xl text-left hover:border-blue-500 hover:bg-blue-50/30 flex justify-between items-center shadow-xs transition-all bg-white">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm uppercase">
-              ${p.name.substring(0, 2)}
-            </div>
-            <div>
-              <div class="font-bold text-sm md:text-base text-gray-800">${p.name}</div>
-              <span class="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full capitalize mt-0.5 ${roleBadgeColor}">
-                ${p.role}
-              </span>
-            </div>
-          </div>
-          <span class="text-blue-600 font-bold text-lg">➔</span>
-        </button>`;
-    });
-
-    html += `
-        </div>
-      </div>`;
-    document.getElementById('content').innerHTML = html;
-  }
-
-  function openPinPad(idx) {
-    selectedProfileForLogin = profiles[idx];
-    enteredPin = "";
-
-    let html = `
-      <div class="max-w-xs mx-auto mt-2 text-center">
-        <button onclick="renderCashierSelect()" class="text-xs font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1 mb-4">
-          ← Change Profile
-        </button>
-
-        <div class="w-14 h-14 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-lg uppercase mx-auto mb-2 shadow-sm">
-          ${selectedProfileForLogin.name.substring(0, 2)}
-        </div>
-        <h3 class="font-bold text-lg text-gray-800">${selectedProfileForLogin.name}</h3>
-        <p class="text-xs text-gray-500 mb-4">Enter your PIN to unlock</p>
-
-        <!-- PIN Dots Display -->
-        <div id="pin-dots" class="flex justify-center gap-3 mb-2 h-8 items-center">
-          <span class="text-gray-400 text-xs font-semibold tracking-widest">ENTER PIN</span>
-        </div>
-        <p id="pin-error" class="text-xs text-red-500 font-bold h-4 mb-3"></p>
-
-        <!-- Numeric Keypad -->
-        <div class="grid grid-cols-3 gap-2.5 max-w-[240px] mx-auto">
-          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => `
-            <button type="button" onclick="pressPinKey('${num}')" class="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-blue-600 active:text-white font-extrabold text-xl text-gray-800 transition-colors shadow-2xs">
-              ${num}
-            </button>
-          `).join('')}
-          <button type="button" onclick="clearPinKey()" class="h-14 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs transition-colors">
-            Clear
-          </button>
-          <button type="button" onclick="pressPinKey('0')" class="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-blue-600 active:text-white font-extrabold text-xl text-gray-800 transition-colors shadow-2xs">
-            0
-          </button>
-          <button type="button" onclick="submitPinLogin()" class="h-14 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-colors shadow-xs">
-            OK
-          </button>
-        </div>
-      </div>`;
-
-    document.getElementById('content').innerHTML = html;
-  }
-
-  function pressPinKey(digit) {
-    if (enteredPin.length >= 8) return;
-    enteredPin += digit;
-    document.getElementById('pin-error').innerText = "";
-    updatePinDots();
-
-    // Auto-submit as soon as the PIN matches the exact length & value!
+    // Auto-submit as soon as the PIN matches the exact length & value
     if (enteredPin === String(selectedProfileForLogin.pin)) {
       setTimeout(() => submitPinLogin(), 150);
     }
@@ -736,14 +591,13 @@
     showTerminal();
   }
 
- /* --- HIGH-PERFORMANCE 1D BARCODE SCANNER (QUAGGA2) --- */
+  /* --- HIGH-PERFORMANCE 1D BARCODE SCANNER (QUAGGA2) --- */
 
   let isScanning = false;
 
   function startCameraScan() {
     document.getElementById('camera-modal-container').classList.remove('hidden');
     
-    // Configure Quagga2 specifically for retail 1D barcodes
     Quagga.init({
       inputStream: {
         name: "Live",
@@ -752,7 +606,7 @@
         constraints: {
           width: { min: 640, ideal: 1280 },
           height: { min: 480, ideal: 720 },
-          facingMode: "environment", // Rear camera
+          facingMode: "environment",
           aspectRatio: { min: 1, max: 2 }
         },
       },
@@ -783,7 +637,6 @@
       isScanning = true;
     });
 
-    // Handle barcode detection
     Quagga.onDetected(onBarcodeDetected);
   }
 
@@ -792,11 +645,9 @@
 
     const code = result.codeResult.code;
     
-    // Verify detection quality/format to avoid false positives
     if (code && code.length >= 6) {
-      isScanning = false; // Pause immediately to avoid duplicate scans
+      isScanning = false;
       
-      // Play a quick beep feedback if available
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
@@ -1068,9 +919,10 @@
       document.getElementById('content').innerHTML = html;
     }
   }
+
   if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js');
-}
+    navigator.serviceWorker.register('./sw.js');
+  }
 </script>
 </body>
 </html>
