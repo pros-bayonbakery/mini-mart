@@ -109,7 +109,7 @@
       <div id="rec-items" class="space-y-1.5 border-b border-dashed border-gray-300 pb-3 mb-3"></div>
 
       <div class="space-y-1 text-right">
-        <div id="rec-discount-row" class="hidden flex justify-between text-gray-600">
+        <div id="rec-discount-row" class="hidden justify-between text-gray-600">
           <span>Discount:</span>
           <span id="rec-discount">-$0.00</span>
         </div>
@@ -836,11 +836,14 @@
     document.getElementById('rec-total').innerText = `$${rec.totalAmount.toFixed(2)}`;
     document.getElementById('rec-paytype').innerText = rec.paymentType;
 
-    if (rec.discount && rec.discount > 0) {
-      document.getElementById('rec-discount-row').classList.remove('hidden');
-      document.getElementById('rec-discount').innerText = `-$${rec.discount.toFixed(2)}`;
+    const discountRow = document.getElementById('rec-discount-row');
+    if (Number(rec.discount) > 0) {
+      discountRow.classList.remove('hidden');
+      discountRow.classList.add('flex');
+      document.getElementById('rec-discount').innerText = `-$${Number(rec.discount).toFixed(2)}`;
     } else {
-      document.getElementById('rec-discount-row').classList.add('hidden');
+      discountRow.classList.add('hidden');
+      discountRow.classList.remove('flex');
     }
 
     let itemsHtml = "";
