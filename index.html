@@ -9,7 +9,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
   <style>
-    /* Hide scrollbar for category tabs */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     #web-cam-reader video {
@@ -19,7 +18,21 @@
       object-fit: cover;
     }
     #web-cam-reader canvas.drawingBuffer {
-      display: none; /* Hides internal canvas overlays */
+      display: none;
+    }
+    /* Print styling so only the receipt prints cleanly */
+    @media print {
+      body * { visibility: hidden; }
+      #receipt-print-area, #receipt-print-area * { visibility: visible; }
+      #receipt-print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      .no-print { display: none !important; }
     }
   </style>
 </head>
@@ -47,9 +60,78 @@
     <!-- Navigation Bar -->
     <nav id="nav-bar" class="hidden bg-gray-50 border-t flex justify-around p-2.5 text-center text-xs md:text-sm">
       <button onclick="showTerminal()" class="flex-1 py-1 text-blue-600 font-bold hover:bg-blue-50 rounded">🛒 Terminal</button>
-      <button onclick="showInventory()" class="flex-1 py-1 text-gray-600 font-semibold hover:bg-gray-100 rounded">📦 Items</button>
+      <button onclick="showTodayReceipts()" class="flex-1 py-1 text-gray-600 font-semibold hover:bg-gray-100 rounded">🧾 Receipts</button>
+      <button id="nav-items" onclick="showInventory()" class="hidden flex-1 py-1 text-gray-600 font-semibold hover:bg-gray-100 rounded">📦 Items</button>
       <button id="nav-reports" onclick="showReports()" class="hidden flex-1 py-1 text-gray-600 font-semibold hover:bg-gray-100 rounded">📊 Reports</button>
     </nav>
+  </div>
+
+  <!-- MANAGER DISCOUNT APPROVAL MODAL -->
+  <div id="discount-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-xs p-5">
+      <h3 class="text-base font-bold text-gray-800 mb-1 text-center">Apply Transaction Discount</h3>
+      <p class="text-xs text-gray-500 text-center mb-4">Requires Manager or Owner PIN approval</p>
+
+      <div class="space-y-3">
+        <div class="flex gap-2">
+          <select id="discount-type" class="border rounded-lg p-2 text-xs font-bold bg-gray-50 outline-none">
+            <option value="amount">Amount ($)</option>
+            <option value="percent">Percent (%)</option>
+          </select>
+          <input type="number" step="0.01" id="discount-value" placeholder="0.00" class="w-full border rounded-lg p-2 text-sm font-bold outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold text-gray-500 mb-1">Manager / Owner PIN</label>
+          <input type="password" inputmode="numeric" id="manager-pin-input" placeholder="Enter approving PIN" class="w-full border-2 border-amber-400 focus:border-amber-500 rounded-lg p-2 text-center text-base font-bold tracking-widest outline-none">
+        </div>
+
+        <p id="discount-error" class="text-xs text-red-500 font-bold text-center min-h-[16px]"></p>
+
+        <div class="flex gap-2 pt-1">
+          <button type="button" onclick="closeDiscountModal()" class="w-1/2 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold text-xs">Cancel</button>
+          <button type="button" onclick="verifyAndApplyDiscount()" class="w-1/2 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-sm">Approve</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECEIPT VIEW / REPRINT MODAL -->
+  <div id="receipt-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50 p-4">
+    <div id="receipt-print-area" class="bg-white rounded-xl shadow-xl w-full max-w-xs p-5 font-mono text-xs">
+      <div class="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
+        <h3 class="font-bold text-base text-gray-900">DRIVE MINI POS</h3>
+        <p class="text-[11px] text-gray-500">Official Sales Receipt</p>
+        <p id="rec-id" class="mt-1 font-bold text-gray-800"></p>
+        <p id="rec-meta" class="text-[10px] text-gray-500"></p>
+      </div>
+
+      <div id="rec-items" class="space-y-1.5 border-b border-dashed border-gray-300 pb-3 mb-3"></div>
+
+      <div class="space-y-1 text-right">
+        <div id="rec-discount-row" class="hidden flex justify-between text-gray-600">
+          <span>Discount:</span>
+          <span id="rec-discount">-$0.00</span>
+        </div>
+        <div class="flex justify-between font-bold text-sm text-gray-900 pt-1">
+          <span>TOTAL:</span>
+          <span id="rec-total">$0.00</span>
+        </div>
+        <div class="flex justify-between text-[11px] text-gray-500">
+          <span>Paid via:</span>
+          <span id="rec-paytype" class="font-bold"></span>
+        </div>
+      </div>
+
+      <div class="text-center text-[10px] text-gray-400 mt-4 pt-2 border-t border-dashed border-gray-200">
+        Thank you for shopping with us!
+      </div>
+
+      <div class="flex gap-2 mt-4 no-print font-sans">
+        <button type="button" onclick="closeReceiptModal()" class="w-1/2 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold text-xs">Close</button>
+        <button type="button" onclick="window.print()" class="w-1/2 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-sm">🖨️ Print</button>
+      </div>
+    </div>
   </div>
 
   <!-- PAYMENT METHOD MODAL -->
@@ -58,7 +140,6 @@
       <h3 class="text-lg font-bold text-center text-gray-800 mb-1">Payment Method</h3>
       <p id="modal-total-display" class="text-center font-extrabold text-2xl text-blue-600 mb-4">$0.00</p>
       
-      <!-- Selection Buttons -->
       <div id="payment-options" class="space-y-3">
         <button type="button" onclick="selectCashPayment()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition-colors">
           <span>💵</span> <span>Cash Payment</span>
@@ -71,7 +152,6 @@
         </button>
       </div>
 
-      <!-- Cash Change Sub-Panel -->
       <div id="cash-panel" class="hidden space-y-3">
         <div>
           <label class="block text-xs font-bold text-gray-500 mb-1">Cash Received ($):</label>
@@ -93,7 +173,7 @@
     </div>
   </div>
 
-  <!-- ADD NEW PRODUCT MODAL -->
+  <!-- ADD NEW PRODUCT MODAL (Manager/Owner Only) -->
   <div id="add-item-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50 p-4">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
       <h3 class="text-base font-bold text-gray-800 mb-3 text-center">Add New Product</h3>
@@ -134,7 +214,7 @@
     </div>
   </div>
 
-  <!-- EDIT PRODUCT MODAL -->
+  <!-- EDIT PRODUCT MODAL (Manager/Owner Only) -->
   <div id="edit-item-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50 p-4">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
       <h3 class="text-base font-bold text-gray-800 mb-3 text-center">Edit Product</h3>
@@ -203,6 +283,11 @@
   let selectedProfileForLogin = null;
   let enteredPin = "";
 
+  // Discount State
+  let appliedDiscount = 0;
+  let discountApprovedBy = "";
+  let todayReceiptsCache = [];
+
   async function callApi(action, extraData = {}) {
     try {
       const response = await fetch(API_URL, {
@@ -250,6 +335,8 @@
     renderCashierSelect();
   }
 
+  /* --- LOGIN & PIN PAD --- */
+
   function renderCashierSelect() {
     selectedProfileForLogin = null;
     enteredPin = "";
@@ -288,9 +375,7 @@
         </button>`;
     });
 
-    html += `
-        </div>
-      </div>`;
+    html += `</div></div>`;
     document.getElementById('content').innerHTML = html;
   }
 
@@ -310,13 +395,11 @@
         <h3 class="font-bold text-lg text-gray-800">${selectedProfileForLogin.name}</h3>
         <p class="text-xs text-gray-500 mb-4">Enter your PIN to unlock</p>
 
-        <!-- PIN Dots Display -->
         <div id="pin-dots" class="flex justify-center gap-3 mb-2 h-8 items-center">
           <span class="text-gray-400 text-xs font-semibold tracking-widest">ENTER PIN</span>
         </div>
         <p id="pin-error" class="text-xs text-red-500 font-bold h-4 mb-3"></p>
 
-        <!-- Numeric Keypad -->
         <div class="grid grid-cols-3 gap-2.5 max-w-[240px] mx-auto">
           ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => `
             <button type="button" onclick="pressPinKey('${num}')" class="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-blue-600 active:text-white font-extrabold text-xl text-gray-800 transition-colors shadow-2xs">
@@ -344,7 +427,6 @@
     document.getElementById('pin-error').innerText = "";
     updatePinDots();
 
-    // Auto-submit as soon as the PIN matches the exact length & value
     if (enteredPin === String(selectedProfileForLogin.pin)) {
       setTimeout(() => submitPinLogin(), 150);
     }
@@ -376,9 +458,12 @@
       document.getElementById('logout-btn').classList.remove('hidden');
       document.getElementById('nav-bar').classList.remove('hidden');
 
+      // Role-Based Access Control: Only Owner & Manager see Items and Reports
       if (currentUser.role === 'owner' || currentUser.role === 'manager') {
+        document.getElementById('nav-items').classList.remove('hidden');
         document.getElementById('nav-reports').classList.remove('hidden');
       } else {
+        document.getElementById('nav-items').classList.add('hidden');
         document.getElementById('nav-reports').classList.add('hidden');
       }
       loadProducts();
@@ -392,6 +477,8 @@
   function logout() {
     currentUser = null;
     cart = [];
+    appliedDiscount = 0;
+    discountApprovedBy = "";
     document.getElementById('logout-btn').classList.add('hidden');
     document.getElementById('nav-bar').classList.add('hidden');
     document.getElementById('user-info').innerText = 'Select Account';
@@ -413,12 +500,26 @@
     }
   }
 
+  /* --- TERMINAL & MANAGER-APPROVED DISCOUNT --- */
+
   function showTerminal() {
-    let cartTotal = cart.reduce((sum, i) => sum + (Number(i.price) * Number(i.qty)), 0);
+    let subtotal = cart.reduce((sum, i) => sum + (Number(i.price) * Number(i.qty)), 0);
+    if (subtotal === 0) {
+      appliedDiscount = 0;
+      discountApprovedBy = "";
+    }
+    if (appliedDiscount > subtotal) {
+      appliedDiscount = subtotal;
+    }
+    let finalTotal = Math.max(0, subtotal - appliedDiscount);
+
     const categories = ['All', ...new Set(products.map(p => p.category || 'General'))];
     const filteredProducts = selectedCategory === 'All' 
       ? products 
       : products.filter(p => (p.category || 'General') === selectedCategory);
+
+    // Only show "+ Add Item" button to Owner or Manager
+    const canManageItems = currentUser.role === 'owner' || currentUser.role === 'manager';
 
     let html = `
       <!-- CAMERA & HARDWARE SCANNER INPUT HEADER -->
@@ -448,8 +549,16 @@
         
         <!-- LEFT COLUMN: CART TERMINAL -->
         <div class="w-full md:w-5/12 border rounded-xl p-4 bg-gray-50 shadow-sm sticky top-16">
-          <h3 class="font-bold text-xs uppercase text-gray-400 mb-2">Cart Terminal (${cart.length})</h3>
-          <div class="space-y-2 max-h-48 md:max-h-80 overflow-y-auto">`;
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold text-xs uppercase text-gray-400">Cart Terminal (${cart.length})</h3>
+            ${cart.length > 0 ? `
+              <button type="button" onclick="openDiscountModal()" class="text-[11px] bg-amber-100 hover:bg-amber-200 text-amber-800 px-2.5 py-1 rounded-md font-bold transition-colors">
+                🏷️ ${appliedDiscount > 0 ? 'Edit Discount' : 'Discount'}
+              </button>
+            ` : ''}
+          </div>
+
+          <div class="space-y-2 max-h-48 md:max-h-72 overflow-y-auto">`;
 
     if(cart.length === 0) {
       html += `<p class="text-xs text-gray-400 text-center py-6">Cart is empty. Scan barcode or tap item.</p>`;
@@ -470,11 +579,30 @@
       });
     }
 
-    html += `
+    html += `</div>`;
+
+    // Totals & Discount Breakdown
+    if (appliedDiscount > 0) {
+      html += `
+        <div class="border-t border-gray-200 mt-3 pt-2.5 space-y-1 text-xs">
+          <div class="flex justify-between text-gray-500">
+            <span>Subtotal:</span>
+            <span>$${subtotal.toFixed(2)}</span>
           </div>
-          <div class="border-t border-gray-200 mt-4 pt-3 flex justify-between font-extrabold text-base md:text-lg">
+          <div class="flex justify-between text-amber-700 font-bold">
+            <span>Discount (Mgr: ${discountApprovedBy}):</span>
+            <div class="flex items-center gap-1.5">
+              <span>-$${appliedDiscount.toFixed(2)}</span>
+              <button type="button" onclick="removeDiscount()" class="text-red-500 hover:text-red-700 font-extrabold">✕</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    html += `
+          <div class="border-t border-gray-200 mt-3 pt-3 flex justify-between font-extrabold text-base md:text-lg">
             <span>Total:</span>
-            <span class="text-blue-600">$${cartTotal.toFixed(2)}</span>
+            <span class="text-blue-600">$${finalTotal.toFixed(2)}</span>
           </div>
           <button type="button" onclick="openPaymentModal()" ${cart.length === 0 ? 'disabled' : ''} class="w-full mt-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3 rounded-lg font-bold disabled:opacity-50 shadow-sm transition-colors">
             Complete Payment
@@ -485,9 +613,11 @@
         <div class="w-full md:w-7/12">
           <div class="flex justify-between items-center mb-2">
             <h3 class="font-bold text-sm text-gray-700">Product Catalog</h3>
-            <button type="button" onclick="openAddItemModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-xs transition-colors">
-              + Add Item
-            </button>
+            ${canManageItems ? `
+              <button type="button" onclick="openAddItemModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-xs transition-colors">
+                + Add Item
+              </button>
+            ` : ''}
           </div>
 
           <!-- Category Filter Pills -->
@@ -522,17 +652,65 @@
         </button>`;
     });
 
-    html += `
-          </div>
-        </div>
-      </div>`;
-
+    html += `</div></div></div>`;
     document.getElementById('content').innerHTML = html;
 
     setTimeout(() => {
       const input = document.getElementById('barcode-input');
       if(input) input.focus();
     }, 100);
+  }
+
+  function openDiscountModal() {
+    document.getElementById('discount-value').value = '';
+    document.getElementById('manager-pin-input').value = '';
+    document.getElementById('discount-error').innerText = '';
+    document.getElementById('discount-modal').classList.remove('hidden');
+    document.getElementById('discount-value').focus();
+  }
+
+  function closeDiscountModal() {
+    document.getElementById('discount-modal').classList.add('hidden');
+  }
+
+  function verifyAndApplyDiscount() {
+    const type = document.getElementById('discount-type').value;
+    const rawVal = Number(document.getElementById('discount-value').value);
+    const pinEntered = document.getElementById('manager-pin-input').value.trim();
+    const errEl = document.getElementById('discount-error');
+
+    if (!rawVal || rawVal <= 0) {
+      errEl.innerText = "Enter a valid discount amount.";
+      return;
+    }
+
+    // Check if PIN belongs to an Owner or Manager in profiles
+    const approver = profiles.find(p => 
+      (p.role === 'manager' || p.role === 'owner') && String(p.pin) === pinEntered
+    );
+
+    if (!approver) {
+      errEl.innerText = "Invalid Manager/Owner PIN.";
+      return;
+    }
+
+    const subtotal = cart.reduce((sum, i) => sum + (Number(i.price) * Number(i.qty)), 0);
+    let calcDiscount = type === 'percent' ? (subtotal * (rawVal / 100)) : rawVal;
+
+    if (calcDiscount > subtotal) {
+      calcDiscount = subtotal;
+    }
+
+    appliedDiscount = Number(calcDiscount.toFixed(2));
+    discountApprovedBy = approver.name;
+    closeDiscountModal();
+    showTerminal();
+  }
+
+  function removeDiscount() {
+    appliedDiscount = 0;
+    discountApprovedBy = "";
+    showTerminal();
   }
 
   function filterCategory(cat) {
@@ -589,6 +767,102 @@
     cart[idx].qty += change;
     if(cart[idx].qty <= 0) cart.splice(idx, 1);
     showTerminal();
+  }
+
+  /* --- TODAY'S RECEIPTS & REPRINT --- */
+
+  async function showTodayReceipts() {
+    document.getElementById('content').innerHTML = `
+      <div class="flex justify-center items-center h-48">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>`;
+
+    const res = await callApi("getTodayReceipts");
+    if (!res.success) {
+      onError(res.error || "Failed to load today's receipts.");
+      return;
+    }
+
+    todayReceiptsCache = res.receipts || [];
+
+    let html = `
+      <div class="max-w-2xl mx-auto">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h2 class="font-bold text-lg text-gray-800">Today's Receipts</h2>
+            <p class="text-xs text-gray-500">Showing sales from today only (${todayReceiptsCache.length})</p>
+          </div>
+          <button type="button" onclick="showTodayReceipts()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-bold">
+            ↻ Refresh
+          </button>
+        </div>`;
+
+    if (todayReceiptsCache.length === 0) {
+      html += `
+        <div class="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+          <p class="text-sm font-bold text-gray-500">No receipts recorded today yet.</p>
+        </div>`;
+    } else {
+      html += `<div class="space-y-2.5">`;
+      todayReceiptsCache.forEach((rec, idx) => {
+        html += `
+          <div class="p-3.5 border rounded-xl bg-white shadow-2xs flex justify-between items-center hover:border-blue-400 transition-all">
+            <div>
+              <div class="font-bold text-sm text-gray-800">Receipt #${rec.saleId}</div>
+              <div class="text-xs text-gray-500">${rec.time} • Cashier: ${rec.cashierName} • ${rec.paymentType}</div>
+              <div class="text-xs font-extrabold text-blue-600 mt-1">
+                $${rec.totalAmount.toFixed(2)}
+                ${rec.discount > 0 ? `<span class="text-[10px] text-amber-600 font-semibold ml-1">(Disc: -$${rec.discount.toFixed(2)})</span>` : ''}
+              </div>
+            </div>
+            <button type="button" onclick="openReceiptPreview(${idx})" class="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-bold text-xs flex items-center gap-1 transition-colors">
+              <span>🖨️</span> <span>Reprint</span>
+            </button>
+          </div>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    document.getElementById('content').innerHTML = html;
+  }
+
+  function openReceiptPreview(idx) {
+    const rec = todayReceiptsCache[idx];
+    if (!rec) return;
+
+    document.getElementById('rec-id').innerText = `Receipt #${rec.saleId}`;
+    document.getElementById('rec-meta').innerText = `Today at ${rec.time} | Cashier: ${rec.cashierName}`;
+    document.getElementById('rec-total').innerText = `$${rec.totalAmount.toFixed(2)}`;
+    document.getElementById('rec-paytype').innerText = rec.paymentType;
+
+    if (rec.discount && rec.discount > 0) {
+      document.getElementById('rec-discount-row').classList.remove('hidden');
+      document.getElementById('rec-discount').innerText = `-$${rec.discount.toFixed(2)}`;
+    } else {
+      document.getElementById('rec-discount-row').classList.add('hidden');
+    }
+
+    let itemsHtml = "";
+    if (rec.items && rec.items.length > 0) {
+      rec.items.forEach(item => {
+        const lineTotal = (Number(item.price) * Number(item.qty)).toFixed(2);
+        itemsHtml += `
+          <div class="flex justify-between">
+            <span>${item.qty}x ${item.name}</span>
+            <span>$${lineTotal}</span>
+          </div>`;
+      });
+    } else {
+      itemsHtml = `<div class="text-gray-400 italic">Item details unavailable</div>`;
+    }
+
+    document.getElementById('rec-items').innerHTML = itemsHtml;
+    document.getElementById('receipt-modal').classList.remove('hidden');
+  }
+
+  function closeReceiptModal() {
+    document.getElementById('receipt-modal').classList.add('hidden');
   }
 
   /* --- HIGH-PERFORMANCE 1D BARCODE SCANNER (QUAGGA2) --- */
@@ -674,7 +948,8 @@
   /* --- PAYMENT MODAL FUNCTIONS --- */
 
   function openPaymentModal() {
-    currentSaleTotal = cart.reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
+    const subtotal = cart.reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
+    currentSaleTotal = Math.max(0, subtotal - appliedDiscount);
     document.getElementById('modal-total-display').innerText = `$${currentSaleTotal.toFixed(2)}`;
     resetPaymentModal();
     document.getElementById('payment-modal').classList.remove('hidden');
@@ -722,6 +997,8 @@
       cashierName: currentUser.name,
       paymentType: payType,
       totalAmount: currentSaleTotal,
+      discount: appliedDiscount,
+      approvedBy: discountApprovedBy,
       cart: cart
     };
 
@@ -734,15 +1011,18 @@
     if(res.success) {
       alert(`Sale Completed (${payType})! Receipt #${res.saleId}`);
       cart = [];
+      appliedDiscount = 0;
+      discountApprovedBy = "";
       loadProducts();
     } else {
       onError(res.error);
     }
   }
 
-  /* --- PRODUCT INVENTORY MANAGEMENT --- */
+  /* --- PRODUCT INVENTORY MANAGEMENT (Manager/Owner Only) --- */
 
   function openAddItemModal() {
+    if (currentUser.role === 'cashier') return;
     document.getElementById('add-item-modal').classList.remove('hidden');
     document.getElementById('new-barcode').focus();
   }
@@ -753,6 +1033,7 @@
 
   async function submitNewProduct(event) {
     event.preventDefault();
+    if (currentUser.role === 'cashier') return;
     
     const payload = {
       barcode: document.getElementById('new-barcode').value.trim(),
@@ -781,6 +1062,11 @@
   }
 
   function showInventory() {
+    if (currentUser.role === 'cashier') {
+      showTerminal();
+      return;
+    }
+
     let html = `
       <div class="w-full">
         <div class="flex justify-between items-center mb-4">
@@ -827,6 +1113,7 @@
   }
 
   function openEditItemModal(idx) {
+    if (currentUser.role === 'cashier') return;
     const prod = products[idx];
     document.getElementById('edit-barcode').value = prod.barcode;
     document.getElementById('edit-name').value = prod.name;
@@ -844,6 +1131,7 @@
 
   async function submitEditProduct(event) {
     event.preventDefault();
+    if (currentUser.role === 'cashier') return;
 
     const payload = {
       barcode: document.getElementById('edit-barcode').value.trim(),
@@ -872,6 +1160,7 @@
   }
 
   async function confirmDeleteProduct(barcode, name) {
+    if (currentUser.role === 'cashier') return;
     if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
 
     document.getElementById('content').innerHTML = `
@@ -890,6 +1179,11 @@
   }
 
   async function showReports() {
+    if (currentUser.role === 'cashier') {
+      showTerminal();
+      return;
+    }
+
     document.getElementById('content').innerHTML = `
       <div class="flex justify-center items-center h-48">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
